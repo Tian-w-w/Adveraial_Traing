@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>防偷拍检测系统</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+SC:wght@300;400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050810;
+    --surface: #0a0f1e;
+    --border: #1a2540;
+    --accent: #00e5ff;
+    --danger: #ff2d55;
+    --warn: #ff9f0a;
+    --safe: #30d158;
+    --text: #e0e8ff;
+    --muted: #4a5a80;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Noto Sans SC', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative; z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px;
+  }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--accent), #0070ff);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    box-shadow: 0 0 20px rgba(0,229,255,0.3);
+  }
+
+  .title-block h1 {
+    font-size: 1.4rem; font-weight: 900;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+  }
+
+  .title-block p {
+    font-size: 0.75rem; color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.05em;
+  }
+
+  .status-badge {
+    margin-left: auto;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    background: rgba(0,229,255,0.05);
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--safe);
+    box-shadow: 0 0 8px var(--safe);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Layout */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 20px;
+  }
+
+  @media (max-width: 800px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  /* Panel */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.75rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .panel-header span { color: var(--accent); }
+
+  /* Camera area */
+  .camera-area {
+    position: relative;
+    aspect-ratio: 4/3;
+    background: #000;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+
+  #videoFeed {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+
+  #canvasCapture { display: none; }
+
+  .camera-placeholder {
+    text-align: center;
+    color: var(--muted);
+  }
+
+  .camera-placeholder .icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+
+  .camera-placeholder p {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+  }
+
+  /* Scan overlay */
+  .scan-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    display: none;
+  }
+
+  .scan-overlay.active { display: block; }
+
+  .scan-line {
+    position: absolute; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanMove 3s linear infinite;
+    box-shadow: 0 0 10px var(--accent);
+  }
+
+  @keyframes scanMove {
+    0% { top: 0; }
+    100% { top: 100%; }
+  }
+
+  /* Corner markers */
+  .corner {
+    position: absolute; width: 24px; height: 24px;
+    border-color: var(--accent);
+    border-style: solid;
+    opacity: 0.6;
+  }
+  .corner.tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+  /* Alert flash */
+  .alert-flash {
+    position: absolute; inset: 0;
+    background: rgba(255, 45, 85, 0.15);
+    display: none;
+    animation: flash 0.4s ease-out;
+  }
+  .alert-flash.show { display: block; }
+  @keyframes flash { 0%{opacity:1} 100%{opacity:0} }
+
+  /* Camera controls */
+  .camera-controls {
+    padding: 16px 20px;
+    display: flex; gap: 10px; flex-wrap: wrap;
+    border-top: 1px solid var(--border);
+  }
+
+  .btn {
+    flex: 1;
+    padding: 10px 16px;
+    border: none; border-radius: 8px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #0070ff);
+    color: #000;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,229,255,0.3); }
+
+  .btn-danger {
+    background: rgba(255,45,85,0.15);
+    color: var(--danger);
+    border: 1px solid rgba(255,45,85,0.3);
+  }
+  .btn-danger:hover { background: rgba(255,45,85,0.25); }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+  /* Upload area */
+  .upload-zone {
+    margin: 16px;
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: rgba(0,229,255,0.03); }
+  .upload-zone input { display: none; }
+  .upload-zone p { font-size: 0.75rem; color: var(--muted); font-family: var(--mono); }
+
+  /* Risk gauge */
+  .risk-display {
+    padding: 20px;
+    text-align: center;
+  }
+
+  .risk-ring {
+    position: relative;
+    width: 140px; height: 140px;
+    margin: 0 auto 16px;
+  }
+
+  .risk-ring svg { transform: rotate(-90deg); }
+
+  .risk-ring .ring-bg {
+    fill: none; stroke: var(--border); stroke-width: 10;
+  }
+
+  .risk-ring .ring-fill {
+    fill: none; stroke-width: 10;
+    stroke-linecap: round;
+    stroke-dasharray: 352;
+    stroke-dashoffset: 352;
+    transition: stroke-dashoffset 0.8s ease, stroke 0.3s;
+  }
+
+  .risk-center {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+
+  .risk-pct {
+    font-family: var(--mono);
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .risk-label {
+    font-size: 0.65rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    margin-top: 4px;
+  }
+
+  .risk-level-tag {
+    display: inline-block;
+    padding: 4px 16px;
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    border: 1px solid currentColor;
+    margin-bottom: 12px;
+  }
+
+  /* Info rows */
+  .info-list {
+    padding: 0 20px 16px;
+  }
+
+  .info-row {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.75rem;
+    gap: 12px;
+  }
+  .info-row:last-child { border-bottom: none; }
+
+  .info-key {
+    color: var(--muted);
+    font-family: var(--mono);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .info-val {
+    color: var(--text);
+    text-align: right;
+    line-height: 1.4;
+  }
+
+  /* Evidence tags */
+  .evidence-tags {
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;
+  }
+
+  .tag {
+    padding: 2px 8px;
+    background: rgba(255,159,10,0.12);
+    border: 1px solid rgba(255,159,10,0.3);
+    border-radius: 4px;
+    font-size: 0.65rem;
+    color: var(--warn);
+    font-family: var(--mono);
+  }
+
+  /* Log */
+  .log-panel {
+    grid-column: 1 / -1;
+  }
+
+  .log-body {
+    padding: 12px 16px;
+    height: 160px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    line-height: 1.7;
+  }
+
+  .log-body::-webkit-scrollbar { width: 4px; }
+  .log-body::-webkit-scrollbar-track { background: transparent; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-entry { display: flex; gap: 10px; }
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-msg.safe { color: var(--safe); }
+  .log-msg.warn { color: var(--warn); }
+  .log-msg.danger { color: var(--danger); }
+  .log-msg.info { color: var(--accent); }
+  .log-msg.muted { color: var(--muted); }
+
+  /* Settings */
+  .settings-row {
+    padding: 12px 20px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.75rem;
+  }
+
+  .settings-row label { color: var(--muted); font-family: var(--mono); flex: 1; }
+
+  input[type="text"], input[type="number"] {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    width: 100%;
+  }
+
+  input[type="text"]:focus, input[type="number"]:focus {
+    outline: none; border-color: var(--accent);
+  }
+
+  .api-field { flex: 2; }
+
+  /* Interval slider */
+  .interval-display {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--accent);
+    min-width: 32px;
+    text-align: right;
+  }
+
+  input[type="range"] {
+    accent-color: var(--accent);
+    flex: 1;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    display: none;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(0,229,255,0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  .spinner.active { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex; gap: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat-item {
+    flex: 1; padding: 12px 10px;
+    text-align: center;
+    border-right: 1px solid var(--border);
+  }
+  .stat-item:last-child { border-right: none; }
+
+  .stat-num {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--accent);
+    display: block;
+  }
+
+  .stat-lbl {
+    font-size: 0.6rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">🛡️</div>
+    <div class="title-block">
+      <h1>ANTI-SPY SHIELD</h1>
+      <p>POWERED BY QWEN-VL-PLUS · ALIBABA CLOUD MAAS</p>
+    </div>
+    <div class="status-badge">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">STANDBY</span>
+    </div>
+  </header>
+
+  <!-- Settings -->
+  <div class="panel" style="margin-bottom:20px">
+    <div class="panel-header">⚙️ <span>配置 / CONFIG</span></div>
+    <div class="settings-row">
+      <label>API SERVER URL</label>
+      <input type="text" id="apiUrl" value="http://localhost:5000/detect" class="api-field">
+    </div>
+    <div class="settings-row">
+      <label>检测间隔 (秒)</label>
+      <input type="range" id="interval" min="1" max="15" value="4" step="1">
+      <span class="interval-display" id="intervalVal">4s</span>
+    </div>
+  </div>
+
+  <!-- Main Grid -->
+  <div class="grid">
+
+    <!-- Left: Camera + Upload -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">📷 <span>实时摄像头 / LIVE CAMERA</span>
+          <div class="spinner" id="spinner" style="margin-left:auto"></div>
+        </div>
+        <div class="camera-area">
+          <video id="videoFeed" autoplay playsinline muted></video>
+          <canvas id="canvasCapture"></canvas>
+
+          <div class="camera-placeholder" id="cameraPlaceholder">
+            <div class="icon">📷</div>
+            <p>CAMERA INACTIVE</p>
+            <p style="margin-top:6px;font-size:0.65rem">点击"开启摄像头"开始检测</p>
+          </div>
+
+          <div class="scan-overlay" id="scanOverlay">
+            <div class="scan-line"></div>
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+          </div>
+
+          <div class="alert-flash" id="alertFlash"></div>
+        </div>
+
+        <div class="camera-controls">
+          <button class="btn btn-primary" id="btnStart" onclick="startCamera()">📷 开启摄像头</button>
+          <button class="btn btn-danger" id="btnStop" onclick="stopCamera()" disabled>⏹ 停止</button>
+        </div>
+
+        <!-- Upload -->
+        <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+          <input type="file" id="fileInput" accept="image/*" onchange="detectUploadedImage(event)">
+          <p>📁 或点击上传图片进行单次检测</p>
+          <p style="margin-top:4px;font-size:0.65rem;opacity:0.5">支持 JPG / PNG / WEBP</p>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="panel" style="margin-top:20px">
+        <div class="stats-bar">
+          <div class="stat-item">
+            <span class="stat-num" id="statTotal">0</span>
+            <span class="stat-lbl">总检测</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num" id="statAlerts" style="color:var(--danger)">0</span>
+            <span class="stat-lbl">告警次数</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num" id="statSafe" style="color:var(--safe)">0</span>
+            <span class="stat-lbl">安全帧</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num" id="statRate">0%</span>
+            <span class="stat-lbl">告警率</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Analysis Panel -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">🔍 <span>分析结果 / ANALYSIS</span></div>
+
+        <!-- Risk gauge -->
+        <div class="risk-display">
+          <div class="risk-ring">
+            <svg width="140" height="140" viewBox="0 0 140 140">
+              <circle class="ring-bg" cx="70" cy="70" r="56"/>
+              <circle class="ring-fill" id="riskRing" cx="70" cy="70" r="56"
+                      stroke="var(--safe)" stroke-dashoffset="352"/>
+            </svg>
+            <div class="risk-center">
+              <span class="risk-pct" id="riskPct" style="color:var(--safe)">0%</span>
+              <span class="risk-label">CONFIDENCE</span>
+            </div>
+          </div>
+
+          <div>
+            <span class="risk-level-tag" id="riskTag" style="color:var(--safe);border-color:var(--safe)">
+              ✅ SAFE
+            </span>
+          </div>
+        </div>
+
+        <!-- Info rows -->
+        <div class="info-list">
+          <div class="info-row">
+            <span class="info-key">STATUS</span>
+            <span class="info-val" id="infoStatus">待检测</span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">DESCRIPTION</span>
+            <span class="info-val" id="infoDesc" style="max-width:200px">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">EVIDENCE</span>
+            <span class="info-val" id="infoEvidence">
+              <div class="evidence-tags" id="evidenceTags">
+                <span style="color:var(--muted);font-size:0.7rem;font-family:var(--mono)">无</span>
+              </div>
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">SUGGESTION</span>
+            <span class="info-val" id="infoSuggest" style="max-width:200px;color:var(--muted)">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">TIMESTAMP</span>
+            <span class="info-val" id="infoTime" style="font-family:var(--mono);font-size:0.65rem;color:var(--muted)">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log Panel -->
+    <div class="panel log-panel">
+      <div class="panel-header">📋 <span>检测日志 / EVENT LOG</span>
+        <button class="btn btn-outline" style="margin-left:auto;padding:3px 10px;font-size:0.65rem;flex:none" onclick="clearLog()">清空</button>
+      </div>
+      <div class="log-body" id="logBody">
+        <div class="log-entry">
+          <span class="log-time">--:--:--</span>
+          <span class="log-msg info">系统就绪，等待检测指令...</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let stream = null;
+let detectInterval = null;
+let stats = { total: 0, alerts: 0, safe: 0 };
+
+const video = document.getElementById('videoFeed');
+const canvas = document.getElementById('canvasCapture');
+const ctx = canvas.getContext('2d');
+
+// ============================================================
+// Settings
+// ============================================================
+document.getElementById('interval').addEventListener('input', function() {
+  document.getElementById('intervalVal').textContent = this.value + 's';
+  if (detectInterval) {
+    clearInterval(detectInterval);
+    detectInterval = setInterval(captureAndDetect, parseInt(this.value) * 1000);
+  }
+});
+
+// ============================================================
+// Camera
+// ============================================================
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('cameraPlaceholder').style.display = 'none';
+    document.getElementById('scanOverlay').classList.add('active');
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStop').disabled = false;
+    setStatus('ACTIVE', 'pulse');
+
+    const interval = parseInt(document.getElementById('interval').value) * 1000;
+    detectInterval = setInterval(captureAndDetect, interval);
+    addLog('摄像头已开启，开始实时检测', 'info');
+  } catch (e) {
+    addLog('摄像头启动失败: ' + e.message, 'danger');
+    alert('无法访问摄像头: ' + e.message);
+  }
+}
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (detectInterval) { clearInterval(detectInterval); detectInterval = null; }
+  video.style.display = 'none';
+  document.getElementById('cameraPlaceholder').style.display = '';
+  document.getElementById('scanOverlay').classList.remove('active');
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+  setStatus('STANDBY', '');
+  addLog('摄像头已停止', 'muted');
+}
+
+// ============================================================
+// Capture & Detect
+// ============================================================
+async function captureAndDetect() {
+  if (!stream || !video.videoWidth) return;
+  canvas.width = 640; canvas.height = 480;
+  ctx.drawImage(video, 0, 0, 640, 480);
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+  await sendForDetection(blob);
+}
+
+async function detectUploadedImage(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  addLog(`检测上传图片: ${file.name}`, 'info');
+  await sendForDetection(file);
+}
+
+async function sendForDetection(blobOrFile) {
+  const apiUrl = document.getElementById('apiUrl').value;
+  const spinner = document.getElementById('spinner');
+  spinner.classList.add('active');
+  setStatus('SCANNING', '');
+
+  try {
+    const formData = new FormData();
+    formData.append('image', blobOrFile);
+
+    const resp = await fetch(apiUrl, { method: 'POST', body: formData });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const result = await resp.json();
+    handleResult(result);
+  } catch (e) {
+    addLog('API 调用失败: ' + e.message, 'danger');
+    setStatus('ERROR', '');
+  } finally {
+    spinner.classList.remove('active');
+  }
+}
+
+// ============================================================
+// Result handling
+// ============================================================
+function handleResult(r) {
+  stats.total++;
+  const isSpy = r.is_spying;
+  const risk = r.risk_level || 'NONE';
+  const conf = r.confidence || 0;
+
+  if (isSpy) { stats.alerts++; } else { stats.safe++; }
+  updateStats();
+
+  // Ring
+  const circumference = 352;
+  const offset = circumference - (conf / 100) * circumference;
+  const ring = document.getElementById('riskRing');
+  ring.style.strokeDashoffset = offset;
+
+  const colors = { HIGH: 'var(--danger)', MEDIUM: 'var(--warn)', LOW: '#f5c542', NONE: 'var(--safe)' };
+  const color = colors[risk] || 'var(--safe)';
+  ring.style.stroke = color;
+
+  const pctEl = document.getElementById('riskPct');
+  pctEl.textContent = conf + '%';
+  pctEl.style.color = color;
+
+  // Tag
+  const tags = { HIGH: '🚨 HIGH RISK', MEDIUM: '⚠️ MEDIUM', LOW: '⚡ LOW RISK', NONE: '✅ SAFE' };
+  const tagEl = document.getElementById('riskTag');
+  tagEl.textContent = tags[risk] || '✅ SAFE';
+  tagEl.style.color = color;
+  tagEl.style.borderColor = color;
+
+  // Info
+  document.getElementById('infoStatus').textContent = isSpy ? '⚠️ 检测到可疑行为' : '✅ 正常';
+  document.getElementById('infoStatus').style.color = isSpy ? 'var(--danger)' : 'var(--safe)';
+  document.getElementById('infoDesc').textContent = r.description || '—';
+  document.getElementById('infoSuggest').textContent = r.suggestion || '—';
+  document.getElementById('infoTime').textContent = r.timestamp ? r.timestamp.slice(0, 19).replace('T', ' ') : '—';
+
+  // Evidence tags
+  const et = document.getElementById('evidenceTags');
+  if (r.evidence && r.evidence.length > 0) {
+    et.innerHTML = r.evidence.map(e => `<span class="tag">${e}</span>`).join('');
+  } else {
+    et.innerHTML = '<span style="color:var(--muted);font-size:0.7rem;font-family:var(--mono)">无</span>';
+  }
+
+  // Alert flash
+  if (isSpy && risk !== 'NONE') {
+    const flash = document.getElementById('alertFlash');
+    flash.classList.remove('show');
+    void flash.offsetWidth;
+    flash.classList.add('show');
+    setTimeout(() => flash.classList.remove('show'), 600);
+  }
+
+  // Log
+  const levelMap = { HIGH: 'danger', MEDIUM: 'warn', LOW: 'warn', NONE: 'safe' };
+  const icon = { HIGH: '🚨', MEDIUM: '⚠️', LOW: '⚡', NONE: '✅' };
+  addLog(`[${icon[risk]||''}${risk}] ${r.description || '—'} (置信度:${conf}%)`, levelMap[risk] || 'info');
+
+  setStatus(risk === 'NONE' ? 'CLEAR' : risk, '');
+}
+
+// ============================================================
+// Utils
+// ============================================================
+function updateStats() {
+  document.getElementById('statTotal').textContent = stats.total;
+  document.getElementById('statAlerts').textContent = stats.alerts;
+  document.getElementById('statSafe').textContent = stats.safe;
+  const rate = stats.total > 0 ? Math.round(stats.alerts / stats.total * 100) : 0;
+  document.getElementById('statRate').textContent = rate + '%';
+}
+
+function setStatus(text, mode) {
+  document.getElementById('statusText').textContent = text;
+  const dot = document.getElementById('statusDot');
+  const colors = { ACTIVE: 'var(--safe)', SCANNING: 'var(--accent)', ERROR: 'var(--danger)',
+                   STANDBY: 'var(--muted)', CLEAR: 'var(--safe)', HIGH: 'var(--danger)',
+                   MEDIUM: 'var(--warn)', LOW: '#f5c542' };
+  dot.style.background = colors[text] || 'var(--muted)';
+  dot.style.boxShadow = `0 0 8px ${colors[text] || 'var(--muted)'}`;
+}
+
+function addLog(msg, type = 'info') {
+  const body = document.getElementById('logBody');
+  const now = new Date();
+  const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${type}">${msg}</span>`;
+  body.appendChild(entry);
+  body.scrollTop = body.scrollHeight;
+  // Keep only last 100 entries
+  while (body.children.length > 100) body.removeChild(body.firstChild);
+}
+
+function clearLog() {
+  document.getElementById('logBody').innerHTML = '';
+  addLog('日志已清空', 'muted');
+}
+
+// Demo mode: simulate a result for UI preview
+function runDemo() {
+  const demo = {
+    is_spying: true, confidence: 87, risk_level: 'HIGH',
+    evidence: ['手机朝向异常', '摄像头指向他人'],
+    description: '检测到手机以异常角度拍摄他人',
+    suggestion: '请立即警告当事人并上报管理员',
+    timestamp: new Date().toISOString()
+  };
+  handleResult(demo);
+}
+</script>
+</body>
+</html>
